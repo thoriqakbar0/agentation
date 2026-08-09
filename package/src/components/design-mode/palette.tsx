@@ -638,23 +638,24 @@ export function PaletteIconSvg({ type }: { type: ComponentType }) {
 }
 
 // =============================================================================
-// Shared Component Grid (reusable)
+// Searchable Component Picker
 // =============================================================================
 
-type ComponentGridProps = {
+type ComponentPickerProps = {
   activeType: ComponentType | null;
   onSelect: (type: ComponentType) => void;
   onDragStart: (type: ComponentType, e: React.MouseEvent) => void;
-  scrollRef?: React.Ref<HTMLDivElement>;
-  fadeClass?: string;
   blankCanvas?: boolean;
-  onSearchChange?: () => void;
 };
 
-export function ComponentGrid({ activeType, onSelect, onDragStart, scrollRef, fadeClass, blankCanvas, onSearchChange }: ComponentGridProps) {
+/** Renders the searchable, categorized Layout Mode component palette. */
+export function ComponentPicker({ activeType, onSelect, onDragStart, blankCanvas }: ComponentPickerProps) {
   const [query, setQuery] = useState("");
+  const [fadeClass, setFadeClass] = useState("");
   const searchInputId = useId();
+  const componentTitleId = useId();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const normalizedQuery = query.trim().toLowerCase();
   const visibleSections = useMemo(() => {
     if (!normalizedQuery) return COMPONENT_REGISTRY;
@@ -664,26 +665,45 @@ export function ComponentGrid({ activeType, onSelect, onDragStart, scrollRef, fa
       items: section.section.toLowerCase().includes(normalizedQuery)
         ? section.items
         : section.items.filter((item) =>
-            `${item.label} ${item.type}`.toLowerCase().includes(normalizedQuery)
+            item.label.toLowerCase().includes(normalizedQuery)
           ),
     })).filter((section) => section.items.length > 0);
   }, [normalizedQuery]);
   const visibleCount = visibleSections.reduce((count, section) => count + section.items.length, 0);
 
-  const updateQuery = useCallback((value: string) => {
-    setQuery(value);
-    onSearchChange?.();
-  }, [onSearchChange]);
+  const updateScrollFade = useCallback(() => {
+    setFadeClass(scrollFadeClass(scrollRef.current));
+  }, []);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+
+    updateScrollFade();
+    element.addEventListener("scroll", updateScrollFade, { passive: true });
+    const resizeObserver = new ResizeObserver(updateScrollFade);
+    resizeObserver.observe(element);
+
+    return () => {
+      element.removeEventListener("scroll", updateScrollFade);
+      resizeObserver.disconnect();
+    };
+  }, [updateScrollFade]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    updateScrollFade();
+  }, [normalizedQuery, updateScrollFade]);
 
   const clearSearch = useCallback(() => {
-    updateQuery("");
+    setQuery("");
     searchInputRef.current?.focus();
-  }, [updateQuery]);
+  }, []);
 
   return (
     <div className={styles.componentPicker}>
       <div className={styles.componentPickerHeader}>
-        <span className={styles.componentPickerTitle}>Components</span>
+        <span id={componentTitleId} className={styles.componentPickerTitle}>Components</span>
         <span className={styles.componentPickerCount}>
           {normalizedQuery ? `${visibleCount} of ${COMPONENT_COUNT}` : COMPONENT_COUNT}
         </span>
@@ -704,7 +724,7 @@ export function ComponentGrid({ activeType, onSelect, onDragStart, scrollRef, fa
           type="search"
           placeholder="Search components"
           value={query}
-          onChange={(event) => updateQuery(event.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape" && query) {
               event.stopPropagation();
@@ -730,7 +750,12 @@ export function ComponentGrid({ activeType, onSelect, onDragStart, scrollRef, fa
         {normalizedQuery ? `${visibleCount} ${visibleCount === 1 ? "component" : "components"} found` : ""}
       </div>
 
-      <div ref={scrollRef} className={`${styles.placeScroll} ${fadeClass || ""}`}>
+      <div
+        ref={scrollRef}
+        className={`${styles.placeScroll} ${fadeClass}`}
+        role="region"
+        aria-labelledby={componentTitleId}
+      >
         {visibleSections.map((section) => (
           <div key={section.section} className={styles.paletteSection}>
             <div className={styles.paletteSectionTitle}>{section.section}</div>
@@ -739,8 +764,8 @@ export function ComponentGrid({ activeType, onSelect, onDragStart, scrollRef, fa
                 key={item.type}
                 className={`${styles.paletteItem} ${activeType === item.type ? styles.active : ""} ${blankCanvas ? styles.wireframe : ""}`}
                 onClick={() => onSelect(item.type)}
-                onMouseDown={(e) => {
-                  if (e.button === 0) onDragStart(item.type, e);
+                onMouseDown={(event) => {
+                  if (event.button === 0) onDragStart(item.type, event);
                 }}
               >
                 <div className={styles.paletteItemIcon}>
@@ -871,8 +896,6 @@ export function DesignPalette({
   const lastFooterSuffix = useRef("");
   const rafRef = useRef(0);
   const exitTimerRef = useRef<ReturnType<typeof originalSetTimeout>>();
-  const placeScrollRef = useRef<HTMLDivElement>(null);
-  const [placeFade, setPlaceFade] = useState("");
 
   useEffect(() => {
     if (visible) {
@@ -922,27 +945,6 @@ export function DesignPalette({
       return () => clearTimeout(t);
     }
   }, [hasFooterContent]);
-
-  const updatePlaceFade = useCallback(() => {
-    setPlaceFade(scrollFadeClass(placeScrollRef.current));
-  }, []);
-
-  const handleSearchChange = useCallback(() => {
-    if (placeScrollRef.current) placeScrollRef.current.scrollTop = 0;
-    originalRequestAnimationFrame(updatePlaceFade);
-  }, [updatePlaceFade]);
-
-  // Scroll fade
-  useEffect(() => {
-    if (!mounted) return;
-    const el = placeScrollRef.current;
-    if (!el) return;
-    updatePlaceFade();
-    el.addEventListener("scroll", updatePlaceFade, { passive: true });
-    const ro = new ResizeObserver(updatePlaceFade);
-    ro.observe(el);
-    return () => { el.removeEventListener("scroll", updatePlaceFade); ro.disconnect(); };
-  }, [mounted, updatePlaceFade]);
 
   if (!mounted) return null;
 
@@ -1017,15 +1019,12 @@ export function DesignPalette({
           </div>
         </div>
 
-        {/* Component grid — always visible */}
-        <ComponentGrid
+        {/* Component picker — always visible */}
+        <ComponentPicker
           activeType={activeType}
           onSelect={onSelect}
           onDragStart={onDragStart}
-          scrollRef={placeScrollRef}
-          fadeClass={placeFade}
           blankCanvas={blankCanvas}
-          onSearchChange={handleSearchChange}
         />
       </div>
 
