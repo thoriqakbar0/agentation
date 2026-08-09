@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { COMPONENT_REGISTRY, DEFAULT_SIZES, type ComponentType } from "./types";
 import { originalRequestAnimationFrame, originalSetTimeout } from "../../utils/freeze-animations";
 import styles from "./styles.module.scss";
@@ -11,6 +11,11 @@ function scrollFadeClass(el: HTMLDivElement | null) {
   const bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
   return `${top ? styles.fadeTop : ""} ${bottom ? styles.fadeBottom : ""}`;
 }
+
+const COMPONENT_COUNT = COMPONENT_REGISTRY.reduce(
+  (count, section) => count + section.items.length,
+  0
+);
 
 // =============================================================================
 // Mini SVG Icons for Palette (compact 20x16)
@@ -643,31 +648,117 @@ type ComponentGridProps = {
   scrollRef?: React.Ref<HTMLDivElement>;
   fadeClass?: string;
   blankCanvas?: boolean;
+  onSearchChange?: () => void;
 };
 
-export function ComponentGrid({ activeType, onSelect, onDragStart, scrollRef, fadeClass, blankCanvas }: ComponentGridProps) {
+export function ComponentGrid({ activeType, onSelect, onDragStart, scrollRef, fadeClass, blankCanvas, onSearchChange }: ComponentGridProps) {
+  const [query, setQuery] = useState("");
+  const searchInputId = useId();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleSections = useMemo(() => {
+    if (!normalizedQuery) return COMPONENT_REGISTRY;
+
+    return COMPONENT_REGISTRY.map((section) => ({
+      ...section,
+      items: section.section.toLowerCase().includes(normalizedQuery)
+        ? section.items
+        : section.items.filter((item) =>
+            `${item.label} ${item.type}`.toLowerCase().includes(normalizedQuery)
+          ),
+    })).filter((section) => section.items.length > 0);
+  }, [normalizedQuery]);
+  const visibleCount = visibleSections.reduce((count, section) => count + section.items.length, 0);
+
+  const updateQuery = useCallback((value: string) => {
+    setQuery(value);
+    onSearchChange?.();
+  }, [onSearchChange]);
+
+  const clearSearch = useCallback(() => {
+    updateQuery("");
+    searchInputRef.current?.focus();
+  }, [updateQuery]);
+
   return (
-    <div ref={scrollRef} className={`${styles.placeScroll} ${fadeClass || ""}`}>
-      {COMPONENT_REGISTRY.map((section) => (
-        <div key={section.section} className={styles.paletteSection}>
-          <div className={styles.paletteSectionTitle}>{section.section}</div>
-          {section.items.map((item) => (
-            <div
-              key={item.type}
-              className={`${styles.paletteItem} ${activeType === item.type ? styles.active : ""} ${blankCanvas ? styles.wireframe : ""}`}
-              onClick={() => onSelect(item.type)}
-              onMouseDown={(e) => {
-                if (e.button === 0) onDragStart(item.type, e);
-              }}
-            >
-              <div className={styles.paletteItemIcon}>
-                <PaletteIconSvg type={item.type} />
+    <div className={styles.componentPicker}>
+      <div className={styles.componentPickerHeader}>
+        <span className={styles.componentPickerTitle}>Components</span>
+        <span className={styles.componentPickerCount}>
+          {normalizedQuery ? `${visibleCount} of ${COMPONENT_COUNT}` : COMPONENT_COUNT}
+        </span>
+      </div>
+
+      <div className={styles.paletteSearch}>
+        <label htmlFor={searchInputId} className={styles.visuallyHidden}>Search components</label>
+        <span className={styles.paletteSearchIcon} aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none">
+            <circle cx="7" cy="7" r="4" stroke="currentColor" strokeWidth="1.25" />
+            <path d="m10 10 3 3" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+          </svg>
+        </span>
+        <input
+          ref={searchInputRef}
+          id={searchInputId}
+          className={styles.paletteSearchInput}
+          type="search"
+          placeholder="Search components"
+          value={query}
+          onChange={(event) => updateQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && query) {
+              event.stopPropagation();
+              clearSearch();
+            }
+          }}
+        />
+        {query && (
+          <button
+            type="button"
+            className={styles.paletteSearchClear}
+            aria-label="Clear component search"
+            onClick={clearSearch}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
+              <path d="m5 5 6 6m0-6-6 6" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      <div className={styles.visuallyHidden} role="status" aria-live="polite">
+        {normalizedQuery ? `${visibleCount} ${visibleCount === 1 ? "component" : "components"} found` : ""}
+      </div>
+
+      <div ref={scrollRef} className={`${styles.placeScroll} ${fadeClass || ""}`}>
+        {visibleSections.map((section) => (
+          <div key={section.section} className={styles.paletteSection}>
+            <div className={styles.paletteSectionTitle}>{section.section}</div>
+            {section.items.map((item) => (
+              <div
+                key={item.type}
+                className={`${styles.paletteItem} ${activeType === item.type ? styles.active : ""} ${blankCanvas ? styles.wireframe : ""}`}
+                onClick={() => onSelect(item.type)}
+                onMouseDown={(e) => {
+                  if (e.button === 0) onDragStart(item.type, e);
+                }}
+              >
+                <div className={styles.paletteItemIcon}>
+                  <PaletteIconSvg type={item.type} />
+                </div>
+                <span className={styles.paletteItemLabel}>{item.label}</span>
               </div>
-              <span className={styles.paletteItemLabel}>{item.label}</span>
-            </div>
-          ))}
-        </div>
-      ))}
+            ))}
+          </div>
+        ))}
+
+        {normalizedQuery && visibleCount === 0 && (
+          <div className={styles.paletteSearchEmpty}>
+            <div>No components found for “{query.trim()}”</div>
+            <button type="button" onClick={clearSearch}>Clear search</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -832,18 +923,26 @@ export function DesignPalette({
     }
   }, [hasFooterContent]);
 
+  const updatePlaceFade = useCallback(() => {
+    setPlaceFade(scrollFadeClass(placeScrollRef.current));
+  }, []);
+
+  const handleSearchChange = useCallback(() => {
+    if (placeScrollRef.current) placeScrollRef.current.scrollTop = 0;
+    originalRequestAnimationFrame(updatePlaceFade);
+  }, [updatePlaceFade]);
+
   // Scroll fade
   useEffect(() => {
     if (!mounted) return;
     const el = placeScrollRef.current;
     if (!el) return;
-    const update = () => setPlaceFade(scrollFadeClass(el));
-    update();
-    el.addEventListener("scroll", update, { passive: true });
-    const ro = new ResizeObserver(update);
+    updatePlaceFade();
+    el.addEventListener("scroll", updatePlaceFade, { passive: true });
+    const ro = new ResizeObserver(updatePlaceFade);
     ro.observe(el);
-    return () => { el.removeEventListener("scroll", update); ro.disconnect(); };
-  }, [mounted]);
+    return () => { el.removeEventListener("scroll", updatePlaceFade); ro.disconnect(); };
+  }, [mounted, updatePlaceFade]);
 
   if (!mounted) return null;
 
@@ -878,49 +977,57 @@ export function DesignPalette({
         </div>
       </div>
 
-      {/* Wireframe toggle */}
-      <div
-        className={`${styles.canvasToggle} ${blankCanvas ? styles.active : ""}`}
-        onClick={() => onBlankCanvasChange(!blankCanvas)}
-      >
-        <span className={styles.canvasToggleIcon}>
-          <svg viewBox="0 0 14 14" width="14" height="14" fill="none">
-            <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1" />
-            <circle cx="4.5" cy="4.5" r="0.8" fill="currentColor" opacity=".6" />
-            <circle cx="7" cy="4.5" r="0.8" fill="currentColor" opacity=".6" />
-            <circle cx="9.5" cy="4.5" r="0.8" fill="currentColor" opacity=".6" />
-            <circle cx="4.5" cy="7" r="0.8" fill="currentColor" opacity=".6" />
-            <circle cx="7" cy="7" r="0.8" fill="currentColor" opacity=".6" />
-            <circle cx="9.5" cy="7" r="0.8" fill="currentColor" opacity=".6" />
-            <circle cx="4.5" cy="9.5" r="0.8" fill="currentColor" opacity=".6" />
-            <circle cx="7" cy="9.5" r="0.8" fill="currentColor" opacity=".6" />
-            <circle cx="9.5" cy="9.5" r="0.8" fill="currentColor" opacity=".6" />
-          </svg>
-        </span>
-        <span className={styles.canvasToggleLabel}>Wireframe New Page</span>
-      </div>
-      {/* Wireframe purpose textarea — only when wireframe active */}
-      <div className={`${styles.wireframePurposeWrap} ${!blankCanvas ? styles.collapsed : ""}`}>
-        <div className={styles.wireframePurposeInner}>
-          <textarea
-            className={styles.wireframePurposeInput}
-            placeholder="Describe this page to provide additional context for your agent."
-            value={wireframePurpose}
-            onChange={(e) => onWireframePurposeChange(e.target.value)}
-            rows={2}
-          />
-        </div>
-      </div>
+      <div className={styles.paletteBody}>
+        <div className={styles.paletteGroup}>
+          <div className={styles.paletteGroupLabel}>Canvas</div>
+          <button
+            type="button"
+            className={`${styles.canvasToggle} ${blankCanvas ? styles.active : ""}`}
+            aria-pressed={blankCanvas}
+            onClick={() => onBlankCanvasChange(!blankCanvas)}
+          >
+            <span className={styles.canvasToggleIcon}>
+              <svg viewBox="0 0 14 14" width="14" height="14" fill="none" aria-hidden="true">
+                <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1" />
+                <circle cx="4.5" cy="4.5" r="0.8" fill="currentColor" opacity=".6" />
+                <circle cx="7" cy="4.5" r="0.8" fill="currentColor" opacity=".6" />
+                <circle cx="9.5" cy="4.5" r="0.8" fill="currentColor" opacity=".6" />
+                <circle cx="4.5" cy="7" r="0.8" fill="currentColor" opacity=".6" />
+                <circle cx="7" cy="7" r="0.8" fill="currentColor" opacity=".6" />
+                <circle cx="9.5" cy="7" r="0.8" fill="currentColor" opacity=".6" />
+                <circle cx="4.5" cy="9.5" r="0.8" fill="currentColor" opacity=".6" />
+                <circle cx="7" cy="9.5" r="0.8" fill="currentColor" opacity=".6" />
+                <circle cx="9.5" cy="9.5" r="0.8" fill="currentColor" opacity=".6" />
+              </svg>
+            </span>
+            <span className={styles.canvasToggleLabel}>Wireframe New Page</span>
+          </button>
 
-      {/* Component grid — always visible */}
-      <ComponentGrid
-        activeType={activeType}
-        onSelect={onSelect}
-        onDragStart={onDragStart}
-        scrollRef={placeScrollRef}
-        fadeClass={placeFade}
-        blankCanvas={blankCanvas}
-      />
+          {/* Wireframe purpose textarea — only when wireframe active */}
+          <div className={`${styles.wireframePurposeWrap} ${!blankCanvas ? styles.collapsed : ""}`}>
+            <div className={styles.wireframePurposeInner}>
+              <textarea
+                className={styles.wireframePurposeInput}
+                placeholder="Describe this page to provide additional context for your agent."
+                value={wireframePurpose}
+                onChange={(e) => onWireframePurposeChange(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Component grid — always visible */}
+        <ComponentGrid
+          activeType={activeType}
+          onSelect={onSelect}
+          onDragStart={onDragStart}
+          scrollRef={placeScrollRef}
+          fadeClass={placeFade}
+          blankCanvas={blankCanvas}
+          onSearchChange={handleSearchChange}
+        />
+      </div>
 
       {/* Footer: change count + clear */}
       {footerVisible && (
