@@ -47,9 +47,7 @@ The toolbar appears in the bottom-right corner. Click to activate, then click an
 
 ## Layout Mode search
 
-Find components by name or category—no scrolling required. [Watch the 60 FPS demo](https://github.com/thoriqakbar0/agentation/releases/download/layout-mode-search-demo/layout-mode-component-search.mov).
-
-<video src="https://github.com/thoriqakbar0/agentation/releases/download/layout-mode-search-demo/layout-mode-component-search.mov" controls muted loop></video>
+![Layout Mode component search](https://github.com/thoriqakbar0/agentation/releases/download/layout-mode-search-demo/layout-mode-component-search.gif)
 
 ## How it works
 
