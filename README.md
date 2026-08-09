@@ -40,9 +40,18 @@ The toolbar appears in the bottom-right corner. Click to activate, then click an
 - **Multi-select** – Drag to select multiple elements at once
 - **Area selection** – Drag to annotate any region, even empty space
 - **Animation pause** – Freeze all animations (CSS, JS, videos) to capture specific states
+- **Layout Mode search** – Find components by name or category without scrolling through the full palette
 - **Structured output** – Copy markdown with selectors, positions, and context
 - **Dark/light mode** – Matches your preference or set manually
 - **Zero dependencies** – Pure CSS animations, no runtime libraries
+
+## Layout Mode component search
+
+Search all 66 Layout Mode components by name or category, then select or drag the result onto the page.
+
+<video src="https://github.com/thoriqakbar0/agentation/releases/download/layout-mode-search-demo/layout-mode-component-search.mov" controls muted loop></video>
+
+[Watch the 60 FPS Layout Mode search demo](https://github.com/thoriqakbar0/agentation/releases/download/layout-mode-search-demo/layout-mode-component-search.mov)
 
 ## How it works
 
